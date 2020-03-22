@@ -198,7 +198,7 @@
             TextEditorCore.FontSizeChanged += LineHighlighter_OnFontSizeChanged;
             TextEditorCore.TextWrappingChanged += LineHighlighter_OnTextWrappingChanged;
             TextEditorCore.ScrollViewerOffsetChanged += LineHighlighter_OnScrolled;
-            base.SizeChanged += LineHighlighter_WindowSizeChanged;
+            TextEditorCore.SizeChanged += LineHighlighter_OnSizeChanged;
 
             TextEditorCore.FontZoomFactorChanged += TextEditorCore_OnFontZoomFactorChanged;
         }
@@ -236,7 +236,7 @@
             TextEditorCore.FontSizeChanged -= LineHighlighter_OnFontSizeChanged;
             TextEditorCore.TextWrappingChanged -= LineHighlighter_OnTextWrappingChanged;
             TextEditorCore.ScrollViewerOffsetChanged -= LineHighlighter_OnScrolled;
-            base.SizeChanged -= LineHighlighter_WindowSizeChanged;
+            TextEditorCore.SizeChanged -= LineHighlighter_OnSizeChanged;
 
             TextEditorCore.FontZoomFactorChanged -= TextEditorCore_OnFontZoomFactorChanged;
 
@@ -501,7 +501,7 @@
             TextEditorCore.TextWrapping = metadata.WrapWord ? TextWrapping.Wrap : TextWrapping.NoWrap;
             TextEditorCore.FontSize = metadata.FontZoomFactor * EditorSettingsService.EditorFontSize;
             TextEditorCore.SetTextSelectionPosition(metadata.SelectionStartPosition, metadata.SelectionEndPosition);
-            TextEditorCore.SetScrollViewerPosition(metadata.ScrollViewerHorizontalOffset, metadata.ScrollViewerVerticalOffset);
+            TextEditorCore.SetScrollViewerInitPosition(metadata.ScrollViewerHorizontalOffset, metadata.ScrollViewerVerticalOffset);
             TextEditorCore.ClearUndoQueue();
 
             if (EditorSettingsService.IsLineHighlighterEnabled) DrawLineHighlighter();
@@ -568,7 +568,7 @@
         private void OpenSplitView(IContentPreviewExtension extension)
         {
             SplitPanel.Content = extension;
-            SplitPanelColumnDefinition.Width = new GridLength(ActualWidth / 2.0f);
+            SplitPanelColumnDefinition.Width = new GridLength(1, GridUnitType.Star);
             SplitPanelColumnDefinition.MinWidth = 100.0f;
             SplitPanel.Visibility = Visibility.Visible;
             GridSplitter.Visibility = Visibility.Visible;
@@ -579,10 +579,11 @@
         private void CloseSplitView()
         {
             SplitPanelColumnDefinition.Width = new GridLength(0);
+            EditorColumnDefinition.Width = new GridLength(1, GridUnitType.Star);
             SplitPanelColumnDefinition.MinWidth = 0.0f;
             SplitPanel.Visibility = Visibility.Collapsed;
             GridSplitter.Visibility = Visibility.Collapsed;
-            TextEditorCore.Focus(FocusState.Programmatic);
+            TextEditorCore.ResetFocusAndScrollToPreviousPosition();
             _isContentPreviewPanelOpened = false;
         }
 
@@ -633,7 +634,7 @@
             SideBySideDiffViewRowDefinition.Height = new GridLength(0);
             SideBySideDiffViewer.Visibility = Visibility.Collapsed;
             SideBySideDiffViewer.StopRenderingAndClearCache();
-            TextEditorCore.Focus(FocusState.Programmatic);
+            TextEditorCore.ResetFocusAndScrollToPreviousPosition();
         }
 
         private void ShowHideSideBySideDiffViewer()
@@ -650,7 +651,7 @@
 
         public void GetLineColumnSelection(out int startLine, out int endLine, out int startColumn, out int endColumn, out int selected, out int lineCount)
         {
-            TextEditorCore.GetLineColumnSelection(out startLine, out endLine, out startColumn, out endColumn, out selected, out lineCount);
+            TextEditorCore.GetLineColumnSelection(out startLine, out endLine, out startColumn, out endColumn, out selected, out lineCount, GetLineEnding());
         }
 
         public double GetFontZoomFactor()
@@ -711,7 +712,7 @@
             }
             else if (Mode == TextEditorMode.Editing)
             {
-                TextEditorCore.Focus(FocusState.Programmatic);
+                TextEditorCore.ResetFocusAndScrollToPreviousPosition();
             }
         }
 
@@ -1023,9 +1024,9 @@
             if (EditorSettingsService.IsLineHighlighterEnabled) DrawLineHighlighter();
         }
 
-        private void LineHighlighter_WindowSizeChanged(object sender, SizeChangedEventArgs e)
+        private void LineHighlighter_OnSizeChanged(object sender, SizeChangedEventArgs e)
         {
-            if (EditorSettingsService.EditorDefaultTextWrapping == TextWrapping.Wrap && EditorSettingsService.IsLineHighlighterEnabled) DrawLineHighlighter();
+            if (EditorSettingsService.IsLineHighlighterEnabled) DrawLineHighlighter();
         }
 
         private void LineHighlighter_OnScrolled(object sender, ScrollViewerViewChangedEventArgs e)
