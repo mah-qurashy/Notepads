@@ -25,7 +25,7 @@
                 new KeyboardShortcut<bool>(false, true, false, VirtualKey.E, null),
                 new KeyboardShortcut<bool>(false, true, false, VirtualKey.R, null),
                 new KeyboardShortcut<bool>(false, true, false, VirtualKey.W, null),
-                new KeyboardShortcut<bool>(true, true, true, VirtualKey.Enter, null)
+                new KeyboardShortcut<bool>(true, true, false, VirtualKey.Enter, null)
         };
 
         //When enter key is pressed focus is returned to control
@@ -165,7 +165,10 @@
 
         private void FindBar_OnKeyDown(object sender, KeyRoutedEventArgs e)
         {
-            if (e.Key == VirtualKey.Enter && !string.IsNullOrEmpty(FindBar.Text))
+            var ctrlDown = Window.Current.CoreWindow.GetKeyState(VirtualKey.Control).HasFlag(CoreVirtualKeyStates.Down);
+            var altDown = Window.Current.CoreWindow.GetKeyState(VirtualKey.Menu).HasFlag(CoreVirtualKeyStates.Down);
+
+            if (!ctrlDown && !altDown && e.Key == VirtualKey.Enter && !string.IsNullOrEmpty(FindBar.Text))
             {
                 _enterPressed = true;
                 SearchForwardButton_OnClick(sender, e);
@@ -195,7 +198,10 @@
 
         private void ReplaceBar_OnKeyDown(object sender, KeyRoutedEventArgs e)
         {
-            if (e.Key == VirtualKey.Enter && !string.IsNullOrEmpty(FindBar.Text))
+            var ctrlDown = Window.Current.CoreWindow.GetKeyState(VirtualKey.Control).HasFlag(CoreVirtualKeyStates.Down);
+            var altDown = Window.Current.CoreWindow.GetKeyState(VirtualKey.Menu).HasFlag(CoreVirtualKeyStates.Down);
+
+            if (!ctrlDown && !altDown && e.Key == VirtualKey.Enter && !string.IsNullOrEmpty(FindBar.Text))
             {
                 _enterPressed = true;
                 ReplaceButton_OnClick(sender, e);
