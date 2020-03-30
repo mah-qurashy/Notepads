@@ -6,7 +6,6 @@
     using System.Threading;
     using System.Threading.Tasks;
     using Microsoft.AppCenter.Analytics;
-    using Microsoft.Toolkit.Uwp.UI.Controls;
     using Notepads.Commands;
     using Notepads.Controls.FindAndReplace;
     using Notepads.Controls.GoTo;
@@ -38,41 +37,26 @@
         RenamedMovedOrDeleted
     }
 
-    public sealed partial class TextEditor : UserControl, ITextEditor
+    public sealed partial class TextEditor : ITextEditor
     {
+        public new event RoutedEventHandler Loaded;
+        public new event RoutedEventHandler Unloaded;
+        public new event KeyEventHandler KeyDown;
+        public event EventHandler ModeChanged;
+        public event EventHandler ModificationStateChanged;
+        public event EventHandler FileModificationStateChanged;
+        public event EventHandler LineEndingChanged;
+        public event EventHandler EncodingChanged;
+        public event EventHandler TextChanging;
+        public event EventHandler ChangeReverted;
+        public event EventHandler SelectionChanged;
+        public event EventHandler FontZoomFactorChanged;
+        public event EventHandler FileSaved;
+        public event EventHandler FileReloaded;
+
         public Guid Id { get; set; }
 
         public INotepadsExtensionProvider ExtensionProvider;
-
-        public new event RoutedEventHandler Loaded;
-
-        public new event RoutedEventHandler Unloaded;
-
-        public new event KeyEventHandler KeyDown;
-
-        public event EventHandler ModeChanged;
-
-        public event EventHandler ModificationStateChanged;
-
-        public event EventHandler FileModificationStateChanged;
-
-        public event EventHandler LineEndingChanged;
-
-        public event EventHandler EncodingChanged;
-
-        public event EventHandler TextChanging;
-
-        public event EventHandler ChangeReverted;
-
-        public event EventHandler SelectionChanged;
-
-        public event EventHandler FontZoomFactorChanged;
-
-        public event EventHandler FileSaved;
-
-        public event EventHandler FileReloaded;
-
-        private const char RichEditBoxDefaultLineEnding = '\r';
 
         public string FileNamePlaceholder { get; set; } = string.Empty;
 
@@ -161,6 +145,8 @@
 
         private IContentPreviewExtension _contentPreviewExtension;
 
+        private SearchCache _searchCache = new SearchCache(string.Empty);
+
         public TextEditorMode Mode
         {
             get => _mode;
@@ -197,7 +183,7 @@
             TextEditorCore.SelectionChanged += LineHighlighter_OnSelectionChanged;
             TextEditorCore.FontSizeChanged += LineHighlighter_OnFontSizeChanged;
             TextEditorCore.TextWrappingChanged += LineHighlighter_OnTextWrappingChanged;
-            TextEditorCore.ScrollViewerOffsetChanged += LineHighlighter_OnScrolled;
+            TextEditorCore.ScrollViewerViewChanging += LineHighlighter_OnScrollViewerViewChanging;
             TextEditorCore.SizeChanged += LineHighlighter_OnSizeChanged;
 
             TextEditorCore.FontZoomFactorChanged += TextEditorCore_OnFontZoomFactorChanged;
@@ -235,7 +221,7 @@
             TextEditorCore.SelectionChanged -= LineHighlighter_OnSelectionChanged;
             TextEditorCore.FontSizeChanged -= LineHighlighter_OnFontSizeChanged;
             TextEditorCore.TextWrappingChanged -= LineHighlighter_OnTextWrappingChanged;
-            TextEditorCore.ScrollViewerOffsetChanged -= LineHighlighter_OnScrolled;
+            TextEditorCore.ScrollViewerViewChanging -= LineHighlighter_OnScrollViewerViewChanging;
             TextEditorCore.SizeChanged -= LineHighlighter_OnSizeChanged;
 
             TextEditorCore.FontZoomFactorChanged -= TextEditorCore_OnFontZoomFactorChanged;
@@ -418,6 +404,22 @@
                 new KeyboardShortcut<KeyRoutedEventArgs>(true, false, false, VirtualKey.G, (args) => ShowGoToControl()),
                 new KeyboardShortcut<KeyRoutedEventArgs>(false, true, false, VirtualKey.P, (args) => ShowHideContentPreview()),
                 new KeyboardShortcut<KeyRoutedEventArgs>(false, true, false, VirtualKey.D, (args) => ShowHideSideBySideDiffViewer()),
+                new KeyboardShortcut<KeyRoutedEventArgs>(VirtualKey.F3, (args) => InitiateFindReplace(new FindAndReplaceEventArgs (
+                    _searchCache.SearchText,
+                    string.Empty,
+                    _searchCache.MatchCase,
+                    _searchCache.MatchWholeWord,
+                    _searchCache.UseRegex,
+                    FindAndReplaceMode.FindOnly,
+                    SearchDirection.Next))),
+                new KeyboardShortcut<KeyRoutedEventArgs>(false, false, true, VirtualKey.F3, (args) => InitiateFindReplace(new FindAndReplaceEventArgs (
+                    _searchCache.SearchText,
+                    string.Empty,
+                    _searchCache.MatchCase,
+                    _searchCache.MatchWholeWord,
+                    _searchCache.UseRegex,
+                    FindAndReplaceMode.FindOnly,
+                    SearchDirection.Previous))),
                 new KeyboardShortcut<KeyRoutedEventArgs>(VirtualKey.Escape, (args) =>
                 {
                     if (_isContentPreviewPanelOpened)
@@ -428,10 +430,12 @@
                     else if (FindAndReplacePlaceholder != null && FindAndReplacePlaceholder.Visibility == Visibility.Visible)
                     {
                         HideFindAndReplaceControl();
+                        TextEditorCore.Focus(FocusState.Programmatic);
                     }
                     else if (GoToPlaceholder != null && GoToPlaceholder.Visibility == Visibility.Visible)
                     {
                         HideGoToControl();
+                        TextEditorCore.Focus(FocusState.Programmatic);
                     }
                 }),
             });
@@ -798,6 +802,17 @@
 
         private void TextEditorCore_OnKeyDown(object sender, KeyRoutedEventArgs e)
         {
+            var ctrl = Window.Current.CoreWindow.GetKeyState(VirtualKey.Control);
+            var alt = Window.Current.CoreWindow.GetKeyState(VirtualKey.Menu);
+
+            if (FindAndReplacePlaceholder?.Visibility == Visibility.Visible && !ctrl.HasFlag(CoreVirtualKeyStates.Down) && !alt.HasFlag(CoreVirtualKeyStates.Down))
+            {
+                if (e.Key == VirtualKey.F3)
+                {
+                    return;
+                }
+            }
+
             _keyboardCommandHandler.Handle(e);
         }
 
@@ -822,6 +837,11 @@
             CopySelectedTextToWindowsClipboard(e);
         }
 
+        private void FindAndReplaceControl_OnToggleReplaceModeButtonClicked(object sender, bool showReplaceBar)
+        {
+            ShowFindAndReplaceControl(showReplaceBar);
+        }
+
         public void ShowFindAndReplaceControl(bool showReplaceBar)
         {
             if (!TextEditorCore.IsEnabled || Mode != TextEditorMode.Editing)
@@ -830,7 +850,7 @@
             }
 
             GoToPlaceholder?.Dismiss();
-
+            
             if (FindAndReplacePlaceholder == null)
             {
                 FindName("FindAndReplacePlaceholder"); // Lazy loading
@@ -848,7 +868,7 @@
                 FindAndReplacePlaceholder.Show();
             }
 
-            findAndReplace.Focus();
+            findAndReplace.Focus(TextEditorCore.GetSearchString(), FindAndReplaceMode.FindOnly);
         }
 
         public void HideFindAndReplaceControl()
@@ -859,37 +879,50 @@
         private void FindAndReplaceControl_OnFindAndReplaceButtonClicked(object sender, FindAndReplaceEventArgs e)
         {
             TextEditorCore.Focus(FocusState.Programmatic);
-            bool found = false;
-            string regexError = null;
+            InitiateFindReplace(e);
 
-            switch (e.FindAndReplaceMode)
+            // In case user hit "enter" key in search box instead of clicking on search button or hit F3
+            // We should re-focus on FindAndReplaceControl to make the next search "flows"
+            if (!(sender is Button))
+            {
+                FindAndReplaceControl.Focus(string.Empty, e.FindAndReplaceMode);
+            }
+        }
+
+        private void InitiateFindReplace(FindAndReplaceEventArgs findAndReplaceEventArgs)
+        {
+            if (string.IsNullOrEmpty(findAndReplaceEventArgs.SearchText)) return;
+
+            bool found = false;
+            bool regexError = false;
+
+            if (FindAndReplacePlaceholder?.Visibility == Visibility.Visible)
+                _searchCache = new SearchCache(findAndReplaceEventArgs.SearchText, findAndReplaceEventArgs.MatchCase, findAndReplaceEventArgs.MatchWholeWord, findAndReplaceEventArgs.UseRegex);
+
+            switch (findAndReplaceEventArgs.FindAndReplaceMode)
             {
                 case FindAndReplaceMode.FindOnly:
-                    found = TextEditorCore.FindNextAndSelect(e.SearchText, e.MatchCase, e.MatchWholeWord, e.UseRegex, out regexError, false);
-                    // In case user hit "enter" key in search box instead of clicking on search button or hit F3
-                    // We should re-focus on FindAndReplaceControl to make the next search "flows"
-                    if (!(sender is Button))
-                    {
-                        FindAndReplaceControl.Focus();   
-                    }
+                    found = findAndReplaceEventArgs.SearchDirection == SearchDirection.Next
+                        ? TextEditorCore.FindNextAndSelect(findAndReplaceEventArgs.SearchText, findAndReplaceEventArgs.MatchCase, findAndReplaceEventArgs.MatchWholeWord, findAndReplaceEventArgs.UseRegex, out regexError, false)
+                        : TextEditorCore.FindPrevAndSelect(findAndReplaceEventArgs.SearchText, findAndReplaceEventArgs.MatchCase, findAndReplaceEventArgs.MatchWholeWord, findAndReplaceEventArgs.UseRegex, out regexError, false);
                     break;
                 case FindAndReplaceMode.Replace:
-                    found = TextEditorCore.FindNextAndReplace(e.SearchText, e.ReplaceText, e.MatchCase, e.MatchWholeWord, e.UseRegex, out regexError);
+                    found = TextEditorCore.FindNextAndReplace(findAndReplaceEventArgs.SearchText, findAndReplaceEventArgs.ReplaceText, findAndReplaceEventArgs.MatchCase, findAndReplaceEventArgs.MatchWholeWord, findAndReplaceEventArgs.UseRegex, out regexError);
                     break;
                 case FindAndReplaceMode.ReplaceAll:
-                    found = TextEditorCore.FindAndReplaceAll(e.SearchText, e.ReplaceText, e.MatchCase, e.MatchWholeWord, e.UseRegex, out regexError);
+                    found = TextEditorCore.FindAndReplaceAll(findAndReplaceEventArgs.SearchText, findAndReplaceEventArgs.ReplaceText, findAndReplaceEventArgs.MatchCase, findAndReplaceEventArgs.MatchWholeWord, findAndReplaceEventArgs.UseRegex, out regexError);
                     break;
             }
 
             if (!found)
             {
-                if (e.UseRegex && !string.IsNullOrEmpty(regexError))
+                if (findAndReplaceEventArgs.UseRegex && regexError)
                 {
                     NotificationCenter.Instance.PostNotification(_resourceLoader.GetString("FindAndReplace_NotificationMsg_InvalidRegex"), 1500);
                 }
                 else
                 {
-                    NotificationCenter.Instance.PostNotification(_resourceLoader.GetString("FindAndReplace_NotificationMsg_NotFound"), 1500);   
+                    NotificationCenter.Instance.PostNotification(_resourceLoader.GetString("FindAndReplace_NotificationMsg_NotFound"), 1500);
                 }
             }
         }
@@ -1016,7 +1049,12 @@
 
         private void LineHighlighter_OnTextWrappingChanged(object sender, TextWrapping e)
         {
-            if (EditorSettingsService.IsLineHighlighterEnabled) DrawLineHighlighter();
+            if (EditorSettingsService.IsLineHighlighterEnabled)
+            {
+                // TextWrapping changed event happens before layout updated, so we need to update here
+                TextEditorCore.UpdateLayout();
+                DrawLineHighlighter();
+            }
         }
 
         private void LineHighlighter_OnFontSizeChanged(object sender, double e)
@@ -1029,7 +1067,7 @@
             if (EditorSettingsService.IsLineHighlighterEnabled) DrawLineHighlighter();
         }
 
-        private void LineHighlighter_OnScrolled(object sender, ScrollViewerViewChangedEventArgs e)
+        private void LineHighlighter_OnScrollViewerViewChanging(object sender, ScrollViewerViewChangingEventArgs e)
         {
             if (EditorSettingsService.IsLineHighlighterEnabled) DrawLineHighlighter();
         }
