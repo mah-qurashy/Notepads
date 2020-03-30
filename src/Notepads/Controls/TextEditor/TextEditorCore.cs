@@ -154,6 +154,7 @@
                     zoomFactor: null,
                     disableAnimation: true);
             }
+            if (EditorSettingsService.EnableLogEntry) NewLogEntry();
         }
 
         private void TextEditorCore_LostFocus(object sender, RoutedEventArgs e)
@@ -1282,6 +1283,28 @@
             //    AlignmentY = AlignmentY.Center,
             //    Stretch = Stretch.Uniform
             //};
+        }
+
+        private void NewLogEntry()
+        {
+            var docText = GetText();
+            if (!docText.StartsWith(".LOG")) return;
+
+            Document.Selection.StartPosition = docText.Length;
+
+            if (docText[Document.Selection.StartPosition - 1] == RichEditBoxDefaultLineEnding)
+            {
+                Document.Selection.SetText(TextSetOptions.None, DateTime.Now.ToString("h:mm tt dd-MMM-yy")
+                    + RichEditBoxDefaultLineEnding);
+            }
+            else
+            {
+                Document.Selection.SetText(TextSetOptions.None, RichEditBoxDefaultLineEnding
+                    + DateTime.Now.ToString("h:mm tt dd-MMM-yy")
+                    + RichEditBoxDefaultLineEnding);
+            }
+
+            Document.Selection.StartPosition = Document.Selection.EndPosition;
         }
     }
 }
