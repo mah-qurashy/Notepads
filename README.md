@@ -119,7 +119,7 @@ You might notice that I work for Microsoft but Notepads is my personal project t
     * [es-ES][Spanish]: [Jose Pinilla](https://github.com/joseppinilla)
     * [zh-CN][Simplified Chinese]: [lindexi](https://github.com/lindexi), [walterlv](https://github.com/walterlv), [Jackie Liu](https://github.com/JasonStein)
     * [hu-HU][Hungarian]: [Csányi István](https://github.com/AmionSky)
-    * [tr-TR][Turkish]: [Mert Demir](https://github.com/validatedev)
+    * [tr-TR][Turkish]: [Mert Can Demir](https://github.com/validatedev)
     * [ja-JP][Japanese]: [Mamoru Satoh](https://github.com/pnp0a03)
     * [de-DE][German]/[de-CH][German (Switzerland)]: [Walter Wolf](https://github.com/WalterWolf49)
     * [ru-RU][Russian]: [Pavel Erokhin](https://github.com/MairwunNx), [krlvm](https://github.com/krlvm)
@@ -131,6 +131,7 @@ You might notice that I work for Microsoft but Notepads is my personal project t
     * [ko-KR][Korean]: [Donghyeok Tak](https://github.com/tdh8316)
     * [hi-IN][Hindi (India)]/[or-IN][Odia (India)]: [Soumya Ranjan Mahunt](https://github.com/soumyamahunt)
     * [pl-PL][Polish]: [Daxxxis](https://github.com/Daxxxis)
+    * [ka-GE][Georgian (Georgia)]: [guram mazanashvili](https://github.com/gmaza)
 
 [![](https://sourcerer.io/fame/JasonStein/JasonStein/Notepads/images/0)](https://sourcerer.io/fame/JasonStein/JasonStein/Notepads/links/0)[![](https://sourcerer.io/fame/JasonStein/JasonStein/Notepads/images/1)](https://sourcerer.io/fame/JasonStein/JasonStein/Notepads/links/1)[![](https://sourcerer.io/fame/JasonStein/JasonStein/Notepads/images/2)](https://sourcerer.io/fame/JasonStein/JasonStein/Notepads/links/2)[![](https://sourcerer.io/fame/JasonStein/JasonStein/Notepads/images/3)](https://sourcerer.io/fame/JasonStein/JasonStein/Notepads/links/3)[![](https://sourcerer.io/fame/JasonStein/JasonStein/Notepads/images/4)](https://sourcerer.io/fame/JasonStein/JasonStein/Notepads/links/4)[![](https://sourcerer.io/fame/JasonStein/JasonStein/Notepads/images/5)](https://sourcerer.io/fame/JasonStein/JasonStein/Notepads/links/5)[![](https://sourcerer.io/fame/JasonStein/JasonStein/Notepads/images/6)](https://sourcerer.io/fame/JasonStein/JasonStein/Notepads/links/6)[![](https://sourcerer.io/fame/JasonStein/JasonStein/Notepads/images/7)](https://sourcerer.io/fame/JasonStein/JasonStein/Notepads/links/7)
 

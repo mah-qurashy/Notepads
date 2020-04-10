@@ -25,7 +25,14 @@
 
             AlwaysOpenNewWindowToggleSwitch.IsOn = EditorSettingsService.AlwaysOpenNewWindow;
 
-            LogEntryToggleSwitch.IsOn = EditorSettingsService.EnableLogEntry;
+            if (App.IsGameBarWidget)
+            {
+                // these settings don't make sense for Game Bar, there can be only one
+                SessionSnapshotSettingsTitle.Visibility = Visibility.Collapsed;
+                SessionSnapshotSettingsControls.Visibility = Visibility.Collapsed;
+                LaunchPreferenceSettingsTitle.Visibility = Visibility.Collapsed;
+                LaunchPreferenceSettingsControls.Visibility = Visibility.Collapsed;
+            }
 
             Loaded += AdvancedSettings_Loaded;
             Unloaded += AdvancedSettings_Unloaded;
@@ -36,7 +43,6 @@
             ShowStatusBarToggleSwitch.Toggled += ShowStatusBarToggleSwitch_Toggled;
             EnableSessionSnapshotToggleSwitch.Toggled += EnableSessionBackupAndRestoreToggleSwitch_Toggled;
             AlwaysOpenNewWindowToggleSwitch.Toggled += AlwaysOpenNewWindowToggleSwitch_Toggled;
-            LogEntryToggleSwitch.Toggled += LogEntryToggleSwitch_Toggled;
         }
 
         private void AdvancedSettings_Unloaded(object sender, RoutedEventArgs e)
@@ -59,11 +65,6 @@
         private void AlwaysOpenNewWindowToggleSwitch_Toggled(object sender, RoutedEventArgs e)
         {
             EditorSettingsService.AlwaysOpenNewWindow = AlwaysOpenNewWindowToggleSwitch.IsOn;
-        }
-
-        private void LogEntryToggleSwitch_Toggled(object sender, RoutedEventArgs e)
-        {
-            EditorSettingsService.EnableLogEntry = LogEntryToggleSwitch.IsOn;
         }
     }
 }

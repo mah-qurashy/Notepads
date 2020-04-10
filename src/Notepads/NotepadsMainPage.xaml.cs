@@ -18,6 +18,7 @@
     using Windows.ApplicationModel.Resources;
     using Windows.Storage;
     using Windows.System;
+    using Windows.UI;
     using Windows.UI.ViewManagement;
     using Windows.UI.Xaml;
     using Windows.UI.Xaml.Controls;
@@ -34,19 +35,15 @@
         private IReadOnlyList<IStorageItem> _appLaunchFiles;
 
         private string _appLaunchCmdDir;
-
         private string _appLaunchCmdArgs;
-
         private Uri _appLaunchUri;
 
         private readonly ResourceLoader _resourceLoader = ResourceLoader.GetForCurrentView();
 
         private bool _loaded = false;
-
         private bool _appShouldExitAfterLastEditorClosed = false;
 
         private const int TitleBarReservedAreaDefaultWidth = 180;
-
         private const int TitleBarReservedAreaCompactOverlayWidth = 100;
 
         private INotepadsCore _notepadsCore;
@@ -57,7 +54,7 @@
             {
                 if (_notepadsCore == null)
                 {
-                    _notepadsCore = new NotepadsCore(Sets, new NotepadsExtensionProvider());
+                    _notepadsCore = new NotepadsCore(Sets, new NotepadsExtensionProvider(), Dispatcher);
                     _notepadsCore.StorageItemsDropped += OnStorageItemsDropped;
                     _notepadsCore.TextEditorLoaded += OnTextEditorLoaded;
                     _notepadsCore.TextEditorUnloaded += OnTextEditorUnloaded;
@@ -99,11 +96,13 @@
             }
         }
 
-        private readonly IKeyboardCommandHandler<KeyRoutedEventArgs> _keyboardCommandHandler;
+        private readonly ICommandHandler<KeyRoutedEventArgs> _keyboardCommandHandler;
+
+        private const string XBoxGameBarSessionFilePrefix = "XBoxGameBar-";
 
         private ISessionManager _sessionManager;
 
-        private ISessionManager SessionManager => _sessionManager ?? (_sessionManager = SessionUtility.GetSessionManager(NotepadsCore));
+        private ISessionManager SessionManager => _sessionManager ?? (_sessionManager = SessionUtility.GetSessionManager(NotepadsCore, App.IsGameBarWidget ? XBoxGameBarSessionFilePrefix : null));
 
         private readonly string _defaultNewFileName;
 
@@ -116,41 +115,56 @@
             NotificationCenter.Instance.SetNotificationDelegate(this);
 
             // Setup theme
-            ThemeSettingsService.AppBackground = RootGrid;
-            ThemeSettingsService.SetRequestedTheme();
+            ThemeSettingsService.SetRequestedTheme(RootGrid, Window.Current.Content, ApplicationView.GetForCurrentView().TitleBar, Application.Current.RequestedTheme);
+            ThemeSettingsService.OnBackgroundChanged += ThemeSettingsService_OnBackgroundChanged;
+            ThemeSettingsService.OnThemeChanged += ThemeSettingsService_OnThemeChanged;
+            ThemeSettingsService.OnAccentColorChanged += ThemeSettingsService_OnAccentColorChanged;
 
             // Setup custom Title Bar
             Window.Current.SetTitleBar(AppTitleBar);
 
             // Setup status bar
             ShowHideStatusBar(EditorSettingsService.ShowStatusBar);
-            EditorSettingsService.OnStatusBarVisibilityChanged += (sender, visibility) =>
+            EditorSettingsService.OnStatusBarVisibilityChanged += async (sender, visibility) =>
             {
-                if (ApplicationView.GetForCurrentView().ViewMode != ApplicationViewMode.CompactOverlay) ShowHideStatusBar(visibility);
+                await ThreadUtility.CallOnUIThreadAsync(Dispatcher, () =>
+                {
+                    if (ApplicationView.GetForCurrentView().ViewMode != ApplicationViewMode.CompactOverlay) ShowHideStatusBar(visibility);
+                });
             };
 
             // Session backup and restore toggle
             EditorSettingsService.OnSessionBackupAndRestoreOptionChanged += async (sender, isSessionBackupAndRestoreEnabled) =>
             {
-                if (isSessionBackupAndRestoreEnabled)
+                await ThreadUtility.CallOnUIThreadAsync(Dispatcher, async () =>
                 {
-                    SessionManager.IsBackupEnabled = true;
-                    SessionManager.StartSessionBackup(startImmediately: true);
-                }
-                else
-                {
-                    SessionManager.IsBackupEnabled = false;
-                    SessionManager.StopSessionBackup();
-                    await SessionManager.ClearSessionDataAsync();
-                }
+                    if (isSessionBackupAndRestoreEnabled)
+                    {
+                        SessionManager.IsBackupEnabled = true;
+                        SessionManager.StartSessionBackup(startImmediately: true);
+                    }
+                    else
+                    {
+                        SessionManager.IsBackupEnabled = false;
+                        SessionManager.StopSessionBackup();
+                        await SessionManager.ClearSessionDataAsync();
+                    }
+                });
             };
 
             // Sharing
             Windows.ApplicationModel.DataTransfer.DataTransferManager.GetForCurrentView().DataRequested += MainPage_DataRequested;
             Windows.UI.Core.Preview.SystemNavigationManagerPreview.GetForCurrentView().CloseRequested += MainPage_CloseRequested;
 
-            Window.Current.VisibilityChanged += WindowVisibilityChangedEventHandler;
-            Window.Current.SizeChanged += WindowSizeChanged;
+            if (App.IsGameBarWidget)
+            {
+                TitleBarReservedArea.Width = .0f;
+            }
+            else
+            {
+                Window.Current.SizeChanged += WindowSizeChanged;
+                Window.Current.VisibilityChanged += WindowVisibilityChangedEventHandler;
+            }
 
             InitControls();
 
@@ -162,12 +176,33 @@
             {
                 MenuPrintButton.Visibility = Visibility.Collapsed;
                 MenuPrintAllButton.Visibility = Visibility.Collapsed;
-                PrintSettingsSeparator.Visibility = Visibility.Collapsed;
+                MenuPrintSeparator.Visibility = Visibility.Collapsed;
             }
             else
             {
                 PrintArgs.RegisterForPrinting(this);
             }
+        }
+
+        private async void ThemeSettingsService_OnAccentColorChanged(object sender, Color color)
+        {
+            await ThreadUtility.CallOnUIThreadAsync(Dispatcher, ThemeSettingsService.SetRequestedAccentColor);
+        }
+
+        private async void ThemeSettingsService_OnThemeChanged(object sender, EventArgs args)
+        {
+            await ThreadUtility.CallOnUIThreadAsync(Dispatcher, () =>
+            {
+                ThemeSettingsService.SetRequestedTheme(RootGrid, Window.Current.Content, ApplicationView.GetForCurrentView().TitleBar, Application.Current.RequestedTheme);
+            });
+        }
+
+        private async void ThemeSettingsService_OnBackgroundChanged(object sender, Brush backgroundBrush)
+        {
+            await ThreadUtility.CallOnUIThreadAsync(Dispatcher, () =>
+            {
+                RootGrid.Background = backgroundBrush;
+            });
         }
 
         private void InitControls()
@@ -247,6 +282,19 @@
                 MainMenuButton.Foreground = new SolidColorBrush(ThemeSettingsService.AppAccentColor);
                 MenuSettingsButton.IsEnabled = false;
             }
+
+            if (App.IsGameBarWidget)
+            {
+                MenuFullScreenSeparator.Visibility = Visibility.Collapsed;
+                MenuPrintSeparator.Visibility = Visibility.Collapsed;
+                MenuSettingsSeparator.Visibility = Visibility.Collapsed;
+
+                MenuCompactOverlayButton.Visibility = Visibility.Collapsed;
+                MenuFullScreenButton.Visibility = Visibility.Collapsed;
+                MenuPrintButton.Visibility = Visibility.Collapsed;
+                MenuPrintAllButton.Visibility = Visibility.Collapsed;
+                MenuSettingsButton.Visibility = Visibility.Collapsed;
+            }
         }
 
         private async Task BuildOpenRecentButtonSubItems()
@@ -254,7 +302,7 @@
             var openRecentSubItem = new MenuFlyoutSubItem
             {
                 Text = _resourceLoader.GetString("MainMenu_Button_Open_Recent/Text"),
-                Icon = new FontIcon {Glyph = "\xE81C"},
+                Icon = new FontIcon { Glyph = "\xE81C" },
                 Name = "MenuOpenRecentlyUsedFileButton",
             };
 
@@ -317,29 +365,30 @@
         {
             return new KeyboardCommandHandler(new List<IKeyboardCommand<KeyRoutedEventArgs>>()
             {
-                new KeyboardShortcut<KeyRoutedEventArgs>(true, false, false, VirtualKey.W, (args) => NotepadsCore.CloseTextEditor(NotepadsCore.GetSelectedTextEditor())),
-                new KeyboardShortcut<KeyRoutedEventArgs>(true, false, false, VirtualKey.Tab, (args) => NotepadsCore.SwitchTo(true)),
-                new KeyboardShortcut<KeyRoutedEventArgs>(true, false, true, VirtualKey.Tab, (args) => NotepadsCore.SwitchTo(false)),
-                new KeyboardShortcut<KeyRoutedEventArgs>(true, false, false, VirtualKey.N, (args) => NotepadsCore.OpenNewTextEditor(_defaultNewFileName)),
-                new KeyboardShortcut<KeyRoutedEventArgs>(true, false, false, VirtualKey.T, (args) => NotepadsCore.OpenNewTextEditor(_defaultNewFileName)),
-                new KeyboardShortcut<KeyRoutedEventArgs>(true, false, false, VirtualKey.O, async (args) => await OpenNewFiles()),
-                new KeyboardShortcut<KeyRoutedEventArgs>(true, false, false, VirtualKey.S, async (args) => await Save(NotepadsCore.GetSelectedTextEditor(), saveAs: false, ignoreUnmodifiedDocument: true)),
-                new KeyboardShortcut<KeyRoutedEventArgs>(true, false, true, VirtualKey.S, async (args) => await Save(NotepadsCore.GetSelectedTextEditor(), saveAs: true)),
-                new KeyboardShortcut<KeyRoutedEventArgs>(true, false, false, VirtualKey.P, async (args) => await Print(NotepadsCore.GetSelectedTextEditor())),
-                new KeyboardShortcut<KeyRoutedEventArgs>(true, false, true, VirtualKey.P, async (args) => await PrintAll(NotepadsCore.GetAllTextEditors())),
-                new KeyboardShortcut<KeyRoutedEventArgs>(true, false, true, VirtualKey.R, (args) => { ReloadFileFromDisk(this, new RoutedEventArgs()); }),
-                new KeyboardShortcut<KeyRoutedEventArgs>(true, false, true, VirtualKey.N, async (args) => await OpenNewAppInstance()),
-                new KeyboardShortcut<KeyRoutedEventArgs>(true, false, false, VirtualKey.Number1, (args) => NotepadsCore.SwitchTo(0)),
-                new KeyboardShortcut<KeyRoutedEventArgs>(true, false, false, VirtualKey.Number2, (args) => NotepadsCore.SwitchTo(1)),
-                new KeyboardShortcut<KeyRoutedEventArgs>(true, false, false, VirtualKey.Number3, (args) => NotepadsCore.SwitchTo(2)),
-                new KeyboardShortcut<KeyRoutedEventArgs>(true, false, false, VirtualKey.Number4, (args) => NotepadsCore.SwitchTo(3)),
-                new KeyboardShortcut<KeyRoutedEventArgs>(true, false, false, VirtualKey.Number5, (args) => NotepadsCore.SwitchTo(4)),
-                new KeyboardShortcut<KeyRoutedEventArgs>(true, false, false, VirtualKey.Number6, (args) => NotepadsCore.SwitchTo(5)),
-                new KeyboardShortcut<KeyRoutedEventArgs>(true, false, false, VirtualKey.Number7, (args) => NotepadsCore.SwitchTo(6)),
-                new KeyboardShortcut<KeyRoutedEventArgs>(true, false, false, VirtualKey.Number8, (args) => NotepadsCore.SwitchTo(7)),
-                new KeyboardShortcut<KeyRoutedEventArgs>(true, false, false, VirtualKey.Number9, (args) => NotepadsCore.SwitchTo(8)),
-                new KeyboardShortcut<KeyRoutedEventArgs>(VirtualKey.F11, (args) => { EnterExitFullScreenMode(); }),
-                new KeyboardShortcut<KeyRoutedEventArgs>(VirtualKey.F12, (args) => { EnterExitCompactOverlayMode(); }),
+                new KeyboardCommand<KeyRoutedEventArgs>(true, false, false, VirtualKey.W, (args) => NotepadsCore.CloseTextEditor(NotepadsCore.GetSelectedTextEditor())),
+                new KeyboardCommand<KeyRoutedEventArgs>(true, false, false, VirtualKey.Tab, (args) => NotepadsCore.SwitchTo(true)),
+                new KeyboardCommand<KeyRoutedEventArgs>(true, false, true, VirtualKey.Tab, (args) => NotepadsCore.SwitchTo(false)),
+                new KeyboardCommand<KeyRoutedEventArgs>(true, false, false, VirtualKey.N, (args) => NotepadsCore.OpenNewTextEditor(_defaultNewFileName)),
+                new KeyboardCommand<KeyRoutedEventArgs>(true, false, false, VirtualKey.T, (args) => NotepadsCore.OpenNewTextEditor(_defaultNewFileName)),
+                new KeyboardCommand<KeyRoutedEventArgs>(true, false, false, VirtualKey.O, async (args) => await OpenNewFiles()),
+                new KeyboardCommand<KeyRoutedEventArgs>(true, false, false, VirtualKey.S, async (args) => await Save(NotepadsCore.GetSelectedTextEditor(), saveAs: false, ignoreUnmodifiedDocument: true)),
+                new KeyboardCommand<KeyRoutedEventArgs>(true, false, true, VirtualKey.S, async (args) => await Save(NotepadsCore.GetSelectedTextEditor(), saveAs: true)),
+                new KeyboardCommand<KeyRoutedEventArgs>(true, false, false, VirtualKey.P, async (args) => await Print(NotepadsCore.GetSelectedTextEditor())),
+                new KeyboardCommand<KeyRoutedEventArgs>(true, false, true, VirtualKey.P, async (args) => await PrintAll(NotepadsCore.GetAllTextEditors())),
+                new KeyboardCommand<KeyRoutedEventArgs>(true, false, true, VirtualKey.R, (args) => { ReloadFileFromDisk(this, new RoutedEventArgs()); }),
+                new KeyboardCommand<KeyRoutedEventArgs>(true, false, true, VirtualKey.N, async (args) => await OpenNewAppInstance()),
+                new KeyboardCommand<KeyRoutedEventArgs>(true, false, false, VirtualKey.Number1, (args) => NotepadsCore.SwitchTo(0)),
+                new KeyboardCommand<KeyRoutedEventArgs>(true, false, false, VirtualKey.Number2, (args) => NotepadsCore.SwitchTo(1)),
+                new KeyboardCommand<KeyRoutedEventArgs>(true, false, false, VirtualKey.Number3, (args) => NotepadsCore.SwitchTo(2)),
+                new KeyboardCommand<KeyRoutedEventArgs>(true, false, false, VirtualKey.Number4, (args) => NotepadsCore.SwitchTo(3)),
+                new KeyboardCommand<KeyRoutedEventArgs>(true, false, false, VirtualKey.Number5, (args) => NotepadsCore.SwitchTo(4)),
+                new KeyboardCommand<KeyRoutedEventArgs>(true, false, false, VirtualKey.Number6, (args) => NotepadsCore.SwitchTo(5)),
+                new KeyboardCommand<KeyRoutedEventArgs>(true, false, false, VirtualKey.Number7, (args) => NotepadsCore.SwitchTo(6)),
+                new KeyboardCommand<KeyRoutedEventArgs>(true, false, false, VirtualKey.Number8, (args) => NotepadsCore.SwitchTo(7)),
+                new KeyboardCommand<KeyRoutedEventArgs>(true, false, false, VirtualKey.Number9, (args) => NotepadsCore.SwitchTo(8)),
+                new KeyboardCommand<KeyRoutedEventArgs>(VirtualKey.F11, (args) => { EnterExitFullScreenMode(); }),
+                new KeyboardCommand<KeyRoutedEventArgs>(VirtualKey.F12, (args) => { EnterExitCompactOverlayMode(); }),
+                new KeyboardCommand<KeyRoutedEventArgs>(VirtualKey.Escape, (args) => { if (RootSplitView.IsPaneOpen) RootSplitView.IsPaneOpen = false; }),
             });
         }
 
@@ -390,7 +439,7 @@
                 catch (Exception ex)
                 {
                     LoggingService.LogError($"[SessionManager] Failed to LoadLastSessionAsync: {ex}");
-                    Analytics.TrackEvent("FailedToLoadLastSession", new Dictionary<string, string> {{"Exception", ex.ToString()}});
+                    Analytics.TrackEvent("FailedToLoadLastSession", new Dictionary<string, string> { { "Exception", ex.ToString() } });
                 }
             }
 
@@ -441,10 +490,20 @@
 
             await BuildOpenRecentButtonSubItems();
 
-            Window.Current.CoreWindow.Activated -= CoreWindow_Activated;
-            Window.Current.CoreWindow.Activated += CoreWindow_Activated;
-            Application.Current.EnteredBackground -= App_EnteredBackground;
-            Application.Current.EnteredBackground += App_EnteredBackground;
+            if (!App.IsGameBarWidget)
+            {
+                // An issue with the Game Bar extension model and Windows platform prevents the Notepads process from exiting cleanly
+                // when more than one CoreWindow has been created, and NotepadsMainPage is the last to close. The common case for this
+                // is to open Notepads in Game Bar, then open its settings, then close the settings and finally close Notepads.
+                // This puts the process in a bad state where it will no longer open in Game Bar and the Notepads process is orphaned. 
+                // To work around this do not use the EnteredBackground event when running as a widget.
+                // Microsoft is tracking this issue as VSO#25735260
+                Application.Current.EnteredBackground -= App_EnteredBackground;
+                Application.Current.EnteredBackground += App_EnteredBackground;
+
+                Window.Current.CoreWindow.Activated -= CoreWindow_Activated;
+                Window.Current.CoreWindow.Activated += CoreWindow_Activated;
+            }
         }
 
         private async void App_EnteredBackground(object sender, Windows.ApplicationModel.EnteredBackgroundEventArgs e)
@@ -478,7 +537,7 @@
                      args.WindowActivationState == Windows.UI.Core.CoreWindowActivationState.CodeActivated)
             {
                 LoggingService.LogInfo("CoreWindow Activated.", consoleOnly: true);
-                ApplicationSettingsStore.Write(SettingsKey.ActiveInstanceIdStr, App.Id.ToString());
+                Task.Run(() => ApplicationSettingsStore.Write(SettingsKey.ActiveInstanceIdStr, App.Id.ToString()));
                 NotepadsCore.GetSelectedTextEditor()?.StartCheckingFileStatusPeriodically();
                 if (EditorSettingsService.IsSessionSnapshotEnabled)
                 {
@@ -533,7 +592,7 @@
                 async () =>
                 {
                     var count = NotepadsCore.GetNumberOfOpenedTextEditors();
-                    
+
                     foreach (var textEditor in NotepadsCore.GetAllTextEditors())
                     {
                         if (await Save(textEditor, saveAs: false, ignoreUnmodifiedDocument: true, rebuildOpenRecentItems: false))
@@ -574,6 +633,14 @@
             }
         }
 
+        private void UpdateApplicationTitle(ITextEditor activeTextEditor)
+        {
+            if (!App.IsGameBarWidget)
+            {
+                ApplicationView.GetForCurrentView().Title = activeTextEditor.EditingFileName ?? activeTextEditor.FileNamePlaceholder;
+            }
+        }
+
         #endregion
 
         #region InAppNotification
@@ -596,6 +663,7 @@
             if (NotepadsCore.GetSelectedTextEditor() == textEditor)
             {
                 SetupStatusBar(textEditor);
+                UpdateApplicationTitle(textEditor);
                 NotepadsCore.FocusOnSelectedTextEditor();
             }
         }
@@ -655,7 +723,7 @@
                 {
                     if (NotepadsCore.GetAllTextEditors().Contains(textEditor))
                     {
-                        NotepadsCore.DeleteTextEditor(textEditor);   
+                        NotepadsCore.DeleteTextEditor(textEditor);
                     }
                 });
 
@@ -681,7 +749,11 @@
             if (!(sender is ITextEditor textEditor)) return;
             // ignoring key events coming from inactive text editors
             if (NotepadsCore.GetSelectedTextEditor() != textEditor) return;
-            _keyboardCommandHandler.Handle(e);
+            var result = _keyboardCommandHandler.Handle(e);
+            if (result.ShouldHandle)
+            {
+                e.Handled = true;
+            }
         }
 
         private async void OnStorageItemsDropped(object sender, IReadOnlyList<IStorageItem> storageItems)
